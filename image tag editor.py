@@ -68,7 +68,7 @@ current_image_index = 0
 
 canvas = tk.Tk()
 canvas.grid()
-canvas.geometry("1448x768")
+# canvas.geometry("1448x768") # no predefined size, will take what's inside size
 canvas.title("tag editor")
 canvas.config(bg='white')
 
@@ -109,8 +109,13 @@ def update_image():
         create_text_file("", current_text_file)
         log.info ("created " + image_names[current_image_index] + ".txt")
 
+    # resize image, but keep ratio
+    width = 512
+    ratio = width / float(img.size[0])
+    height = int (float(img.size[1]) * ratio)
+    print ("resize image for display to %dx%d with ratio %.2f" % (width, height, ratio) )
 
-    img = img.resize((512, 768), Image.LANCZOS)
+    img = img.resize((width, height), Image.LANCZOS)
     img = ImageTk.PhotoImage(img)
 
 
