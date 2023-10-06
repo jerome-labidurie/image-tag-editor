@@ -2,6 +2,7 @@ from tkinter import *
 from tkinter import filedialog
 from tkinter import font
 from PIL import ImageTk, Image
+from tkinter.scrolledtext import ScrolledText
 
 from pathlib import Path
 
@@ -31,13 +32,13 @@ parser.add_argument('-v', '--verbose',
 args = parser.parse_args()
 
 # init logging for verbosity
-# Level 	   value verbose
-# CRITICAL 	50
-# ERROR 	   40
-# WARNING 	30    0
-# INFO 	   20    1 -v
-# DEBUG 	   10    2 -vv
-# NOTSET 	0
+# Level    value verbose
+# CRITICAL  50
+# ERROR     40
+# WARNING   30    0
+# INFO      20    1 -v
+# DEBUG     10    2 -vv
+# NOTSET     0
 log_level = log.WARNING - 10 * args.verbose
 log.basicConfig(format="%(levelname)s: %(message)s", level=log_level)
 
@@ -52,6 +53,7 @@ image_names = [file[:-4] for file in image_files]
 text_file_paths = [os.path.join(image_dir, image_file[:-4] + '.txt') for image_file in image_files]
 
 log.info ("Found %d images in %s" % (len (image_files), image_dir) )
+log.debug (str(image_files))
 
 images = []
 for image_file in image_files:
@@ -71,20 +73,85 @@ canvas.grid()
 canvas.title("tag editor")
 canvas.config(bg='white')
 
-# Create frame to hold the text editor and buttons
-text_frame = Frame(canvas, bg = "#1e1319")
-text_frame.grid(row=0, column=1, sticky="nsew")
+def select_image (index):
+    global current_image_index
+    save_text_file(text_file_paths[current_image_index])
+    current_image_index = index
+    log.debug("selected from carousel: " + str(index))
+    update_image()
+
+# source https://blog.teclado.com/tkinter-scrollable-frames/
+class ScrollableFrame(tk.Frame):
+    def __init__(self, container, *args, **kwargs):
+        super().__init__(container, *args, **kwargs)
+        canvas = tk.Canvas(self,*args, **kwargs)
+        self.scrollbar = tk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        self.scrollable_frame = tk.Frame(canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=self.scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=False)
+        self.scrollbar.pack(side="right", fill="y")
+    def bind_mouse (self, widget):
+        # with Windows OS
+        widget.bind("<MouseWheel>", self.mouse_wheel)
+        # with Linux OS
+        widget.bind("<Button-4>", self.mouse_wheel)
+        widget.bind("<Button-5>", self.mouse_wheel)
+    def mouse_wheel(self,event):
+        # respond to Linux or Windows wheel event
+        if event.num == 5 or event.delta == -120:
+            print("-" + self.scrollbar.get())
+
+        if event.num == 4 or event.delta == 120:
+            print("+" + self.scrollbar.get())
+
+
+# create images "carousel"
+image_scroll = ScrollableFrame(canvas, width=64)
+# image_scroll.grid_propagate(0)
+image_scroll.grid(row=0, column=0, padx=2, pady=2,sticky="nsew")
+image_scroll.buttons = []
+# image_scrollbar=Scrollbar(image_scroll, orient="vertical")
+# image_scrollbar.config (command=image_scroll.yview)
+# image_scrollbar.pack(side = RIGHT, fill = Y)
+
+# image_scrollbar.grid(row=0, column=1, sticky="ns", rowspan=len(image_files))
+for idx in range(0,len(image_files)):
+    fimg = image_files[idx]
+    log.debug ("btn for " + fimg + " in " + str(idx))
+    img = Image.open(os.path.join(image_dir,fimg)).resize((64, 64), Image.ANTIALIAS)
+    img = ImageTk.PhotoImage(img)
+    btn = tk.Button(image_scroll.scrollable_frame, image=img, borderwidth=0, highlightthickness=0,
+                 command=lambda i=idx: select_image(i))
+    btn.image = img
+    # btn.grid (column=0, row=idx)
+    btn.pack (side=TOP)
+    image_scroll.bind_mouse (btn)
+    image_scroll.buttons.append(btn)
 
 # label for image display
 label = Label(canvas)
-label.grid(row=0,column=0,sticky="nsew")
+label.grid(row=0,column=1,sticky="nsew")
+
+# Create frame to hold the text editor and buttons
+text_frame = Frame(canvas, bg = "#1e1319")
+text_frame.grid(row=0, column=2, sticky="nsew")
 
 # make re-sizable
 canvas.rowconfigure(0, weight=1)
 canvas.columnconfigure(0, weight=0)
-canvas.columnconfigure(1, weight=1)
+canvas.columnconfigure(1, weight=0)
+canvas.columnconfigure(2, weight=1)
 
 text_frame.rowconfigure(0, weight=1)
+text_frame.columnconfigure(0, weight=0)
 text_frame.columnconfigure(1, weight=1)
 
 
@@ -106,6 +173,7 @@ def update_image():
     img = images[current_image_index]
 
     current_text_file = text_file_paths[current_image_index]
+    clearFile()
 
     if os.path.exists(current_text_file):
         load_text_file(current_text_file)
@@ -118,7 +186,7 @@ def update_image():
     width = 512
     ratio = width / float(img.size[0])
     height = int (float(img.size[1]) * ratio)
-    print ("resize image for display to %dx%d with ratio %.2f" % (width, height, ratio) )
+    log.info ("resize image for display to %dx%d with ratio %.2f" % (width, height, ratio) )
 
     img = img.resize((width, height), Image.LANCZOS)
     img = ImageTk.PhotoImage(img)
@@ -134,12 +202,10 @@ def on_key_press(event):
     current_text_file = text_file_paths[current_image_index]
     if event.keysym == 'Prior':
         save_text_file(current_text_file)
-        clearFile();
         current_image_index -= 1
         current_image_index = (current_image_index + len(images)) % len(images)
     elif event.keysym == 'Next':
         save_text_file(current_text_file)
-        clearFile();
         current_image_index += 1
         current_image_index %= len(images)
     update_image()
@@ -154,7 +220,8 @@ def load_text_file(file):
     entry.insert(INSERT, content)
 
 def save_text_file(file):
-    text = str(entry.get(1.0, END))
+    text = str(entry.get(1.0,END)).rstrip("\n\r")
+    print (text)
     with open(file, "w") as f:
         f.write(text)
 
@@ -165,7 +232,7 @@ def saveFileButton():
     new_file = asksaveasfile(mode = 'w', filetypes = [('text files', '.txt')])
     if new_file is None:
         return
-    text = str(entry.get(1.0, END))
+    text = str(entry.get(1.0,END)).rstrip("\n\r")
     new_file.write(text)
     new_file.close()
 
@@ -173,7 +240,7 @@ def openFileButton():
     file = askopenfile(mode = 'r', filetypes = [('text files', '*.txt')])
     if file is not None:
         content = file.read()
-        entry.insert(INSERT, content)
+        entry.insert(1.0, content)
 
 def clearFileButton():
     entry.delete(1.0, END)
