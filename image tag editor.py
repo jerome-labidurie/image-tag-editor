@@ -73,6 +73,8 @@ canvas.grid()
 canvas.title("tag editor")
 canvas.config(bg='white')
 
+# callback for selecting image in the image "carousel"
+# index: image index in image_files[]
 def select_image (index):
     global current_image_index
     save_text_file(text_file_paths[current_image_index])
@@ -80,24 +82,28 @@ def select_image (index):
     log.debug("selected from carousel: " + str(index))
     update_image()
 
-# source https://blog.teclado.com/tkinter-scrollable-frames/
+# sources:
+#  https://blog.teclado.com/tkinter-scrollable-frames/
+#  https://www.daniweb.com/programming/software-development/code/217059/using-the-mouse-wheel-with-tkinter-python
 class ScrollableFrame(tk.Frame):
     def __init__(self, container, *args, **kwargs):
         super().__init__(container, *args, **kwargs)
-        canvas = tk.Canvas(self,*args, **kwargs)
-        self.scrollbar = tk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        self.canvas = tk.Canvas(self,*args, **kwargs)
+        self.scrollbar = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.scrollable_frame = tk.Frame(canvas)
 
         self.scrollable_frame.bind(
             "<Configure>",
-            lambda e: canvas.configure(
-                scrollregion=canvas.bbox("all")
+            lambda e: self.canvas.configure(
+                scrollregion=self.canvas.bbox("all")
             )
         )
-        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=self.scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=False)
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.canvas.pack(side="left", fill="both", expand=False)
         self.scrollbar.pack(side="right", fill="y")
+    # mouse wheel management for child widgets
+    # must call like that: image_scroll.bind_mouse (button)
     def bind_mouse (self, widget):
         # with Windows OS
         widget.bind("<MouseWheel>", self.mouse_wheel)
@@ -107,22 +113,17 @@ class ScrollableFrame(tk.Frame):
     def mouse_wheel(self,event):
         # respond to Linux or Windows wheel event
         if event.num == 5 or event.delta == -120:
-            print("-" + self.scrollbar.get())
-
+            self.canvas.yview_scroll(1, "units")
         if event.num == 4 or event.delta == 120:
-            print("+" + self.scrollbar.get())
+            self.canvas.yview_scroll(-1, "units")
 
 
 # create images "carousel"
 image_scroll = ScrollableFrame(canvas, width=64)
-# image_scroll.grid_propagate(0)
 image_scroll.grid(row=0, column=0, padx=2, pady=2,sticky="nsew")
-image_scroll.buttons = []
-# image_scrollbar=Scrollbar(image_scroll, orient="vertical")
-# image_scrollbar.config (command=image_scroll.yview)
-# image_scrollbar.pack(side = RIGHT, fill = Y)
+image_scroll.buttons = [] # to keep references
 
-# image_scrollbar.grid(row=0, column=1, sticky="ns", rowspan=len(image_files))
+# add images as buttons
 for idx in range(0,len(image_files)):
     fimg = image_files[idx]
     log.debug ("btn for " + fimg + " in " + str(idx))
@@ -130,11 +131,10 @@ for idx in range(0,len(image_files)):
     img = ImageTk.PhotoImage(img)
     btn = tk.Button(image_scroll.scrollable_frame, image=img, borderwidth=0, highlightthickness=0,
                  command=lambda i=idx: select_image(i))
-    btn.image = img
-    # btn.grid (column=0, row=idx)
+    btn.image = img # keep reference
     btn.pack (side=TOP)
     image_scroll.bind_mouse (btn)
-    image_scroll.buttons.append(btn)
+    image_scroll.buttons.append(btn) # keep reference
 
 # label for image display
 label = Label(canvas)
@@ -221,7 +221,7 @@ def load_text_file(file):
 
 def save_text_file(file):
     text = str(entry.get(1.0,END)).rstrip("\n\r")
-    print (text)
+    log.info ("Saving in %s : %s" % (file, text) )
     with open(file, "w") as f:
         f.write(text)
 
